@@ -4,6 +4,9 @@ import logo from "@/assets/work-order.png";
 import Link from "next/link";
 import { useState, useEffect, use } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { firebasedb } from "@/lib/firebaseConfig";
+import {getDoc , doc, updateDoc} from "firebase/firestore";
+import { supabase } from "@/lib/supabaseClient";
 
 
 
@@ -21,7 +24,23 @@ const router = useRouter();
 
   useEffect(() => {
     async function fetchData() {
-      
+      try {
+        const docRef = doc(firebasedb, "task", id as string);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setTitle(data.title);
+          setDetail(data.detail);
+          setIsCompleted(data.is_completed);
+          setOldImageFile(data.image_url);
+          setPreviewFile(data.image_url);
+        }
+
+    }catch (error) {
+      alert("พบปัญหาในการดึงข้อมูล");
+      console.log(error);
+      return;
+    }
     }
     fetchData();
   }, [id]);
@@ -39,12 +58,73 @@ const router = useRouter();
 //อัพโหลดรูปภาพและบันทึกแก้ไขข้อมูลลงฐานข้อมูลfirebase
   async function handleUplodeAndUpdate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    
-    
-  }
+    //อับโหลดรูปภาพ
+    //สร้างตัวแปร image_url เพื่อเก็บ URL ของรูปภาพที่อัพโหลด เพื่อเอาไปบันทึกลงตาราง task_tb
+    let image_url = "";
+
+    // validate image file
+    if (image_File) {
+      //ลบรูปออกจาก stroage (ถ้ามีรูป)
+      if (old_image_file != "") {
+        //เอาเฉพาะชื่อรูปจาก image_url เก็บในตัวแปล
+        const image_name = old_image_file.split("/").pop() as string;
+        //ลบรูปออกจาก storage
+        const {data, error } = await supabase.storage
+        .from("task_bk")
+        .remove([image_name]);
+        //ตรวจสอบ error
+        if (error) {
+          alert("พบปัญหาในการลบรูปภาพ");
+          console.log(error.message);
+          return;
+        }
+      }
+      // if have image file, upload to supabase storage
+      // named new file to avoid duplicate file name
+      const new_image_file_name = `${Date.now()}-${image_File.name}`;
+
+      // upload image to supabase storage
+      const { data, error } = await supabase.storage
+        .from("task_bk")
+        .upload(new_image_file_name, image_File);
+
+      // after upload image, check the result
+      // if there is error, show alert and return, if no error, get the image url and stored in variable image_url
+      if (error) {
+        // show alert and return
+        alert("พบปัญหาในการอัพโหลดรูปภาพ กรุณาลองใหม่อีกครั้ง");
+        console.log(error.message);
+        return;
+      } else {
+        // no error, get the image url and stored in variable image_url
+        const { data } = await supabase.storage
+          .from("task_bk")
+          .getPublicUrl(new_image_file_name);
+        image_url = data.publicUrl;
+      }
+    }
+    try {
+      await updateDoc(doc(firebasedb, "task", id as string), {
+        title: title,
+        detail: detail,
+        is_completed: is_Completed,
+        image_url: image_url ,
+        update_at: new Date().toISOString(),
+      })
+      alert("บันทึกแก้ไขข้อมูลเรียบร้อยแล้ว");
+      router.push("/alltask");
+
+    }catch (error) {
+      alert("พบปัญหาในการแก้ไขข้อมูล กรุณาลองใหม่อีกครั้ง");
+      console.log(error);
+      return;
+    }
+
   
 
-  return (
+  
+}
+return (
     <div className="flex flex-col w-10/12 mx-auto mb-10">
       <div className="flex flex-col items-center mt-10 ">
         <Image src={logo} alt="Logo" width={100} height={100} />
@@ -128,5 +208,7 @@ const router = useRouter();
         </div>
       </div>
     </div>
+  
   );
 }
+

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { firebasedb } from "@/lib/firebaseConfig";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { supabase } from "@/lib/supabaseClient";
 
 //สร้างประเภทตัวแปลเพื่อเก็บข้อมูลที่ดึงมาจาก firebase
 type Task = {
@@ -24,17 +25,19 @@ export default function Page() {
   //เมื่อเพจถูกโหลด ให้ดึงข้อมูลจาก Supabase เพื่อมาแสดง
   useEffect(() => {
     async function fetchTasks() {
-      const result =await getDocs(collection(firebasedb, "task"));
-      
-      setTasks(result.docs.map((doc) => ({
-        id: doc.id,
-        title: doc.data().title,
-        detail: doc.data().detail,
-        is_completed: doc.data().is_completed,
-        image_url: doc.data().image_url,
-        created_at: doc.data().created_at,
-        update_at: doc.data().update_at,
-      })));
+      const result = await getDocs(collection(firebasedb, "task"));
+
+      setTasks(
+        result.docs.map((doc) => ({
+          id: doc.id,
+          title: doc.data().title,
+          detail: doc.data().detail,
+          is_completed: doc.data().is_completed,
+          image_url: doc.data().image_url,
+          created_at: doc.data().created_at,
+          update_at: doc.data().update_at,
+        }))
+      );
     }
     fetchTasks();
   }, []);
@@ -43,15 +46,35 @@ export default function Page() {
   async function handleDeleteTaskClick(id: string, image_url: string) {
     //แสดงconfirm dialogเพื่อให้ผู้ใช้ยืนยันการลบข้อมูล
     if (confirm("คุณต้องการลบงานนี้ใช่หรือไม่?")) {
+      if (image_url != "") {
+        //เอาเฉพาะชื่อรูปจาก image_url เก็บในตัวแปล
+        const image_name = image_url.split("/").pop() as string;
+        //ลบรูปออกจาก storage
+        const { data, error } = await supabase.storage
+          .from("task_bk")
+          .remove([image_name]);
+        //ตรวจสอบ error
+        if (error) {
+          alert("พบปัญหาในการลบรูปภาพ");
+          console.log(error.message);
+          return;
+        }
+      }
+      //ลบข้อมูลออกจากfirebase 
+      try {
+        await deleteDoc(doc(firebasedb, "task", id));
 
-      //ลบรูปออกจาก stroage (ถ้ามีรูป)
-      
-      //ลบข้อมูลออกจากcolection firebase
-      
+      }
 
       //ตรวจสอบ error
+      catch (error) {
+        alert("พบปัญหาในการลบข้อมูล");
+        console.log(error);
+        return;
+      }
+      //ลบข้อมูลออกจากรายการที่แสดงบนหน้าจอ
+      setTasks(tasks.filter((task) => task.id !== id));
     }
-      
   }
   return (
     <div className="flex flex-col w-10/12 mx-auto">
